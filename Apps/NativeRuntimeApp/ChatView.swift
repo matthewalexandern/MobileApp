@@ -41,7 +41,7 @@ struct ChatView: View {
                 Button("Clear", systemImage: "trash") {
                     runtime.clearConversation()
                 }
-                .disabled(runtime.messages.isEmpty || runtime.isResponding)
+                .disabled(runtime.messages.isEmpty || runtime.isGenerating)
             }
         }
     }
@@ -57,9 +57,14 @@ struct ChatView: View {
             }
             Text(runtime.selection == .demonstration
                  ? "Scripted mock output. No AI model is running."
-                 : "Native inference is unavailable until the llama.cpp backend is linked and verified on an iPhone.")
+                 : "Local model output is untrusted guidance. Review authoritative sources before remediation.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if runtime.selection == .native, let model = runtime.importedModel {
+                Text("Selected: \(model.manifest.displayName) · \(model.manifest.quantization.rawValue)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if runtime.selection == .demonstration, !runtime.isReady, !runtime.isBusy {
                 Button("Start demonstration") {
                     Task { await runtime.startDemonstration() }
@@ -102,9 +107,9 @@ struct ChatView: View {
                 .lineLimit(1...5)
                 .focused($composerFocused)
                 .textFieldStyle(.roundedBorder)
-                .disabled(!runtime.isReady || runtime.isBusy || runtime.isResponding)
+                .disabled(!runtime.isReady || runtime.isBusy || runtime.isGenerating)
                 .onSubmit { sendMessage() }
-            if runtime.isResponding {
+            if runtime.isGenerating {
                 Button("Cancel", systemImage: "stop.circle.fill") {
                     runtime.cancelGeneration()
                 }
@@ -113,7 +118,7 @@ struct ChatView: View {
             } else {
                 Button("Send", systemImage: "arrow.up.circle.fill", action: sendMessage)
                     .labelStyle(.iconOnly)
-                    .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !runtime.isReady || runtime.isBusy)
+                    .disabled(prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !runtime.isReady || runtime.isBusy || runtime.isGenerating)
             }
         }
         .font(.title2)
@@ -124,7 +129,7 @@ struct ChatView: View {
     private func sendMessage() {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.utf8.count <= 16_384,
-              runtime.isReady, !runtime.isResponding, !runtime.isBusy else {
+              runtime.isReady, !runtime.isGenerating, !runtime.isBusy else {
             if text.utf8.count > 16_384 {
                 runtime.errorMessage = "Keep the message below 16 KB for this initial runtime."
             }

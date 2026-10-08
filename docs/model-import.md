@@ -1,29 +1,33 @@
 # Reviewed local model import
 
-M0 imports a local file; it does not download or execute model weights. Obtain
-models outside the app using a separately reviewed source. Never add GGUF files
-or private data to this repository.
+The app imports local files and never downloads model weights. Obtain models
+outside the app from a separately reviewed source. Never add GGUF files or
+private data to this repository.
 
 1. Inspect the actual Hugging Face repository listing for the community-pruned
-   model named in ARCHITECTURE.md. Confirm the immutable revision, publisher,
-   pruning history, architecture, license and permitted uses. Do not assume any
-   filename or quantization URL exists.
+   model named in ARCHITECTURE.md. Confirm immutable revision, publisher, pruning
+   history, architecture, license and permitted uses. Do not assume a filename or
+   quantization URL exists.
 2. Choose an actual Q8_0 artifact, or a separately reviewed Q4_K_M artifact when
    Q8 is unsuitable. Obtain its exact byte count and SHA-256 independently of an
-   untrusted local file. A hash you compute from a file you have not trusted is
-   not independent verification.
+   untrusted local file. Computing a hash from an untrusted file does not establish
+   a trust anchor.
 3. Record the metadata in a JSON manifest with the shape below. Substitute actual
    reviewed values; the template deliberately contains no model download link or
-   valid checksum. Keep this manifest beside the file in Files for import.
-4. In Settings, import the reviewed manifest and choose the matching GGUF. The
-   app copies with security-scoped access, hashes incrementally, checks size and
-   GGUF envelope, then commits to app-private storage. Failure preserves existing
-   installed models and removes staging files. Select an actual regular file;
-   source symlinks are rejected. The verified model selection is session-only in
-   M0; select the file and metadata again after restarting the app.
-5. A successful import is file verification only. M0 cannot run that GGUF. Native
-   load must subsequently validate architecture, tensor layout, quantization,
-   tokenizer/template behavior, and memory budget before M1 readiness.
+   valid checksum. Keep the manifest beside its GGUF in Files for import.
+4. In Settings, choose the reviewed manifest, inspect every value, acknowledge
+   the source/revision/license/checksum, then select the matching GGUF. The app
+   uses security-scoped access, copies and hashes incrementally, checks size and
+   GGUF envelope, and installs an immutable private UUID generation. Choose a
+   regular file; source symlinks are rejected. Failed validation preserves the
+   existing catalog and installed generations and removes its staging files.
+5. The private catalog persists reviewed manifests, generation references and
+   explicit selected ID/quantization. After restart, selection restores only after
+   file and SHA-256 verification. Native loading verifies again and requires an
+   explicit load action; foreground activation never automatically loads weights.
+6. Import verifies file consistency, not publisher trust or model quality. In an
+   opt-in native build, loading also validates native tensor/quantization/template
+   compatibility and resource admission. Unsupported artifacts fail visibly.
 
 ```json
 {
@@ -40,11 +44,31 @@ or private data to this repository.
 }
 ```
 
-Q4 uses `"quantization": "Q4_K_M"`, its own safe ID, size, hash, and reviewed
-provenance. Fallback is explicit: release the Q8 context, select the verified Q4
-artifact, and retry at the default context after examining the failure. Never
-treat the model's instructions as approval to scan assets or deploy fixes.
+Q4 uses `"quantization": "Q4_K_M"`, its own safe ID, size, hash and reviewed
+provenance. Selection is explicit: unload Q8, verify/select the reviewed Q4 catalog
+entry, then load at a context no greater than 2048. Q4 has its own resource check.
+Never treat generated instructions as approval to scan assets or deploy fixes.
 
-Allow space for the staged copy in addition to installed weights. Do not import
-unverified multi-gigabyte files merely to discover if they fit. App sandbox and
-Apple file protection reduce exposure but do not remove the native parser risk.
+## Persistence and storage limits
+
+Catalog metadata contains no external source paths. Missing, tampered, corrupt or
+symlinked catalog/artifact data fails visibly instead of silently dropping records
+or selecting another model. M0's uncataloged weight files are left untouched and
+never automatically trusted; reimport with reviewed metadata to use the catalog.
+
+Allow space for the staged copy and installed weights. Reimport creates a new
+generation; formerly committed generations remain on disk so an older recovered
+catalog retains its matching file. A crash before catalog commit can also leave
+unreferenced generations. M1 provides no cleanup/storage-management UI, and atomic
+catalog replacement is not a general power-loss durability guarantee. Storage
+exhaustion and crash recovery require device testing before release.
+
+On iOS, catalog metadata/directories use complete file protection and backup
+exclusion. Weights retain the importer's complete-until-first-authentication
+protection class; locked-device access may fail. Device tests must verify actual
+protection behavior. The sandbox and file protection reduce exposure but do not
+remove native parser risk. Do not import unverified multi-gigabyte files merely
+to discover memory fit.
+
+See [llama-cpp-metal.md](llama-cpp-metal.md) for native build/admission behavior and
+[device-verification.md](device-verification.md) for artifact/device acceptance.

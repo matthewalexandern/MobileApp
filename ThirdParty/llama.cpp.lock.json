@@ -5,6 +5,11 @@
   "license": "MIT",
   "buildScript": "build-xcframework.sh",
   "buildScriptSHA256": "14f4dd0a5af3aa63fd7f47e26b3d6abe5035ac1523a1dee8a4724b66f8b69238",
-  "artifactRelativePath": "build-apple/llama.xcframework",
-  "nativeAdapterLinked": false
+  "upstreamArtifactRelativePath": "build-apple/llama.xcframework",
+  "appBuildScript": "scripts/prepare-llama-xcframework.sh",
+  "artifactRelativePath": "Packages/NativeRuntime/Artifacts/llama.xcframework",
+  "nativeAdapterLinkage": "explicit NATIVE_RUNTIME_ENABLE_LLAMA=1",
+  "appPlatforms": ["macos", "ios", "ios-simulator"],
+  "deploymentTargets": {"macos": "14.0", "ios": "17.0"},
+  "hostSliceArchitectures": "build host arm64 or x86_64; iOS device arm64"
 }

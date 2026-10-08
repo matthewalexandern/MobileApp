@@ -13,7 +13,7 @@ public enum LlamaCppAdapterError: Error, Sendable, Equatable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .nativeBackendUnavailable:
-            "llama.cpp native inference is not linked in M0. Complete Metal integration and device verification before loading a model."
+            "This build does not link llama.cpp. Build with the reviewed native framework to enable local inference."
         case .consumerTooSlow:
             "Generation stopped because queued output exceeded the consumer buffer limit."
         }
@@ -41,7 +41,7 @@ public protocol LlamaCppBackend: Sendable {
     func cancelGeneration(generationID: UUID) async
 }
 
-/// M0 deliberately has no linked native implementation, on any platform.
+/// Portable builds report unavailable instead of substituting demonstration output.
 public struct UnavailableLlamaCppBackend: LlamaCppBackend {
     public init() {}
 
@@ -69,14 +69,19 @@ public struct UnavailableLlamaCppBackend: LlamaCppBackend {
 /// Backend metrics are forwarded unchanged; this adapter invents no benchmarks.
 public actor LlamaCppInferenceEngine: InferenceEngine {
     public nonisolated let mode: InferenceMode = .local
-    public nonisolated static let nativeIntegrationStatus =
-        "llama.cpp native backend is not linked in M0."
+    public nonisolated static var isNativeBackendLinked: Bool { LlamaCppBackendFactory.isLinked }
+    public nonisolated static var nativeIntegrationStatus: String {
+        isNativeBackendLinked
+            ? "llama.cpp is linked. Compatibility and memory fit require verification on your iPhone."
+            : "This build does not link llama.cpp. The demonstration remains available."
+    }
 
     private enum State: Equatable {
         case unloaded
         case loading(UUID)
         case ready
         case generating(UUID)
+        case cancelling(UUID)
         case unloading(UUID)
     }
 
@@ -87,10 +92,11 @@ public actor LlamaCppInferenceEngine: InferenceEngine {
     private var loadTask: Task<Void, Error>?
     private var openStreamTask: Task<AsyncThrowingStream<InferenceEvent, Error>, Error>?
     private var streamTask: Task<Void, Never>?
+    private var cancellationTask: Task<Void, Never>?
     private var teardownTask: Task<Void, Never>?
 
     public init(
-        backend: any LlamaCppBackend = UnavailableLlamaCppBackend(),
+        backend: any LlamaCppBackend = LlamaCppBackendFactory.makeDefault(),
         acceleration: LlamaCppAcceleration = .metal
     ) {
         self.backend = backend
@@ -122,7 +128,7 @@ public actor LlamaCppInferenceEngine: InferenceEngine {
             state = .ready
         } catch {
             if state == .loading(operationID) { await unload() }
-            throw error
+            throw Self.sanitized(error)
         }
     }
 
@@ -135,10 +141,14 @@ public actor LlamaCppInferenceEngine: InferenceEngine {
         }
         let operationID = UUID()
         let generationID: UUID?
-        if case .generating(let id) = state { generationID = id } else { generationID = nil }
+        switch state {
+        case .generating(let id), .cancelling(let id): generationID = id
+        default: generationID = nil
+        }
         let loading = loadTask
         let opening = openStreamTask
         let streaming = streamTask
+        let cancelling = cancellationTask
         let backend = self.backend
         state = .unloading(operationID)
         configuration = nil
@@ -153,11 +163,44 @@ public actor LlamaCppInferenceEngine: InferenceEngine {
             // cancellation. Join it, then cancel the same ID again before free.
             if let generationID { await backend.cancelGeneration(generationID: generationID) }
             if let streaming { await streaming.value }
+            if let cancelling { await cancelling.value }
             await backend.unload()
         }
         teardownTask = operation
         await operation.value
         completeUnload(operationID)
+    }
+
+    /// Capture one operation identity before suspending. Repeated calls share its
+    /// join; delayed cleanup cannot cancel a later generation or advertise readiness.
+    public func cancelGeneration() async {
+        if case .cancelling(let generationID) = state, let operation = cancellationTask {
+            await operation.value
+            completeCancellation(generationID)
+            return
+        }
+        if case .unloading(let operationID) = state, let operation = teardownTask {
+            await operation.value
+            completeUnload(operationID)
+            return
+        }
+        guard case .generating(let generationID) = state else { return }
+        let opening = openStreamTask
+        let streaming = streamTask
+        let backend = self.backend
+        state = .cancelling(generationID)
+        let operation = Task {
+            opening?.cancel()
+            streaming?.cancel()
+            await backend.cancelGeneration(generationID: generationID)
+            if let opening { _ = try? await opening.value }
+            // A backend may finish opening after receiving the first cancellation.
+            await backend.cancelGeneration(generationID: generationID)
+            if let streaming { await streaming.value }
+        }
+        cancellationTask = operation
+        await operation.value
+        completeCancellation(generationID)
     }
 
     public func generate(
@@ -194,7 +237,7 @@ public actor LlamaCppInferenceEngine: InferenceEngine {
                 await backend.cancelGeneration(generationID: generationID)
                 finishGeneration(generationID)
             }
-            throw error
+            throw Self.sanitized(error)
         }
 
         let (stream, continuation) = AsyncThrowingStream<InferenceEvent, Error>.makeStream(
@@ -217,7 +260,7 @@ public actor LlamaCppInferenceEngine: InferenceEngine {
             } catch {
                 await backend.cancelGeneration(generationID: generationID)
                 await self?.finishGeneration(generationID)
-                continuation.finish(throwing: error)
+                continuation.finish(throwing: Self.sanitized(error))
             }
         }
         streamTask = producing
@@ -242,12 +285,28 @@ public actor LlamaCppInferenceEngine: InferenceEngine {
         loadTask = nil
         openStreamTask = nil
         streamTask = nil
+        cancellationTask = nil
         teardownTask = nil
         configuration = nil
         state = .unloaded
     }
 
+    private func completeCancellation(_ generationID: UUID) {
+        guard state == .cancelling(generationID) else { return }
+        openStreamTask = nil
+        streamTask = nil
+        cancellationTask = nil
+        state = .ready
+    }
+
     private func invalidState(_ operation: String) -> RuntimeError {
         RuntimeError.invalidState(operation: operation, state: String(describing: state))
+    }
+
+    private nonisolated static func sanitized(_ error: any Error) -> any Error {
+        if let nativeError = error as? NativeLlamaCppError {
+            return RuntimeError.backendFailure(reason: nativeError.localizedDescription)
+        }
+        return error
     }
 }
