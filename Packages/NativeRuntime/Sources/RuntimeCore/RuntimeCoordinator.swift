@@ -289,8 +289,11 @@ public actor RuntimeCoordinator {
         } catch {
             let failure = error is CancellationError ? RuntimeError.cancelled : (error as? RuntimeError ?? .engineFailure(operation: "generation"))
             continuation.finish(throwing: failure)
-            if generationID == id, state == .ready, case .engineFailure = failure {
-                state = .failed(failure)
+            if generationID == id, state == .ready {
+                switch failure {
+                case .engineFailure, .backendFailure: state = .failed(failure)
+                default: break
+                }
             }
         }
         if generationID == id {
@@ -309,38 +312,53 @@ public actor RuntimeCoordinator {
     ) async throws -> InferenceMetrics {
         try await withThrowingTaskGroup(of: InferenceMetrics.self) { group in
             group.addTask {
-                let clock = ContinuousClock()
-                let start = clock.now
-                var firstToken: Double?
-                var count = 0
-                var sawTerminal = false
-                let upstream = try await engine.generate(request: request)
-                for try await event in upstream {
-                    try Task.checkCancellation()
-                    switch event {
-                    case .token(let token):
-                        guard !sawTerminal else { throw RuntimeError.engineFailure(operation: "generation stream ordering") }
-                        guard count < limit else { throw RuntimeError.resourceLimit(reason: "The engine exceeded the output-token limit.") }
-                        count += 1
-                        if firstToken == nil { firstToken = seconds(start.duration(to: clock.now)) }
-                        switch continuation.yield(.token(token)) {
-                        case .dropped:
-                            throw RuntimeError.resourceLimit(reason: "Generation stopped because the consumer could not keep up.")
-                        case .terminated:
-                            throw RuntimeError.cancelled
-                        case .enqueued:
-                            break
-                        @unknown default:
-                            throw RuntimeError.cancelled
+                do {
+                    let clock = ContinuousClock()
+                    let start = clock.now
+                    var firstToken: Double?
+                    var count = 0
+                    var terminalMetrics: InferenceMetrics?
+                    let upstream = try await engine.generate(request: request)
+                    for try await event in upstream {
+                        try Task.checkCancellation()
+                        switch event {
+                        case .token(let token):
+                            guard terminalMetrics == nil else { throw RuntimeError.engineFailure(operation: "generation stream ordering") }
+                            guard count < limit else { throw RuntimeError.resourceLimit(reason: "The engine exceeded the output-token limit.") }
+                            count += 1
+                            if firstToken == nil { firstToken = seconds(start.duration(to: clock.now)) }
+                            switch continuation.yield(.token(token)) {
+                            case .dropped:
+                                throw RuntimeError.resourceLimit(reason: "Generation stopped because the consumer could not keep up.")
+                            case .terminated:
+                                throw RuntimeError.cancelled
+                            case .enqueued:
+                                break
+                            @unknown default:
+                                throw RuntimeError.cancelled
+                            }
+                        case .finished(let metrics):
+                            guard terminalMetrics == nil, metrics.generatedTokenCount == count,
+                                  metrics.durationSeconds.isFinite, metrics.durationSeconds >= 0,
+                                  metrics.timeToFirstTokenSeconds.map({ $0.isFinite && $0 >= 0 && $0 <= metrics.durationSeconds }) ?? (count == 0),
+                                  metrics.generationDurationSeconds.map({ $0.isFinite && $0 >= 0 && $0 <= metrics.durationSeconds }) ?? true else {
+                                throw RuntimeError.engineFailure(operation: "generation metrics")
+                            }
+                            // Keep native tokenizer/timing measurements, after checking event counts.
+                            // Still wait for closure so native resources are safe to reuse.
+                            terminalMetrics = metrics
                         }
-                    case .finished:
-                        // Wait for stream closure so the backend has settled before another request.
-                        // Native metrics are not substituted for the coordinator's measured events.
-                        sawTerminal = true
                     }
+                    try Task.checkCancellation()
+                    return terminalMetrics ?? InferenceMetrics(generatedTokenCount: count, timeToFirstTokenSeconds: firstToken, durationSeconds: seconds(start.duration(to: clock.now)))
+                } catch {
+                    // Iterator cancellation may return before an AsyncStream producer's
+                    // asynchronous termination handler has joined native/GPU work.
+                    // Keep the coordinator generation active until the engine's barrier
+                    // settles, including when a sibling timeout cancels this child.
+                    await engine.cancelGeneration()
+                    throw error
                 }
-                try Task.checkCancellation()
-                return InferenceMetrics(generatedTokenCount: count, timeToFirstTokenSeconds: firstToken, durationSeconds: seconds(start.duration(to: clock.now)))
             }
             group.addTask {
                 try await Task.sleep(for: .seconds(timeoutSeconds))

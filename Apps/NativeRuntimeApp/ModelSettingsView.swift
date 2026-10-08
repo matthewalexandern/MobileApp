@@ -16,6 +16,8 @@ struct ModelSettingsView: View {
     @State private var importKind: ImportKind = .weights
     @State private var isReadingManifest = false
     @State private var manifestNotice: String?
+    @State private var manifestReadTask: Task<Void, Never>?
+    @State private var manifestReadID: UUID?
 
     private var importTypes: [UTType] {
         importKind == .manifest ? [.json] : [UTType(filenameExtension: "gguf") ?? .data]
@@ -30,7 +32,9 @@ struct ModelSettingsView: View {
             runtimeSection
             importSection
             metadataSection
+            modelCatalogSection
             importedModelSection
+            resourceSection
             measurementSection
             privacySection
         }
@@ -39,7 +43,7 @@ struct ModelSettingsView: View {
             switch result {
             case let .success(url):
                 if importKind == .manifest {
-                    Task { await readManifest(from: url) }
+                    beginReadingManifest(from: url)
                 } else if let manifest = reviewedManifest, hasReviewedMetadata {
                     runtime.importModel(from: url, manifest: manifest)
                 }
@@ -49,6 +53,11 @@ struct ModelSettingsView: View {
         }
         .onChange(of: metadata) { _, _ in
             hasReviewedMetadata = false
+        }
+        .onDisappear {
+            manifestReadTask?.cancel()
+            manifestReadID = nil
+            isReadingManifest = false
         }
     }
 
@@ -62,7 +71,7 @@ struct ModelSettingsView: View {
                     Text(selection.title).tag(selection)
                 }
             }
-            .disabled(runtime.isBusy || runtime.isResponding)
+            .disabled(runtime.isBusy || runtime.isGenerating)
             LabeledContent("State", value: runtime.statusDescription)
             if let failure = runtime.failureDescription {
                 Text(failure).foregroundStyle(.secondary)
@@ -73,17 +82,28 @@ struct ModelSettingsView: View {
                 Button("Start demonstration") {
                     Task { await runtime.startDemonstration() }
                 }
-                .disabled(runtime.isReady || runtime.isBusy || runtime.isResponding)
+                .disabled(runtime.isReady || runtime.isBusy || runtime.isGenerating)
             } else {
                 Text(LlamaCppInferenceEngine.nativeIntegrationStatus)
                     .font(.footnote)
-                Text("The default adapter fails model loading until a reviewed native backend is linked. Metal performance and model compatibility require device verification.")
+                Text(LlamaCppInferenceEngine.isNativeBackendLinked
+                     ? "This build links the opt-in llama.cpp backend. Model compatibility, Metal execution and memory fit still require a physical iPhone verification run."
+                     : "Build with the reviewed llama.cpp XCFramework to enable native loading. Model compatibility and Metal performance require physical iPhone verification.")
                     .font(.footnote)
+                if runtime.nativeThermalLimitReached {
+                    Text("Native loading is blocked while thermal state is serious or critical. Wait for the device to cool, then retry explicitly.")
+                        .font(.footnote)
+                }
             }
             Button("Unload runtime") {
                 Task { await runtime.unloadModel() }
             }
             .disabled(runtime.isBusy || !runtime.isReady)
+            if runtime.isImporting || runtime.isVerifying || runtime.isLoading {
+                Button("Cancel model preparation", role: .cancel) {
+                    runtime.cancelModelPreparation()
+                }
+            }
         } header: {
             Text("Inference runtime")
         }
@@ -97,7 +117,7 @@ struct ModelSettingsView: View {
                 importKind = .manifest
                 showingImporter = true
             }
-            .disabled(runtime.isBusy || isReadingManifest || runtime.isResponding)
+            .disabled(runtime.isBusy || isReadingManifest || runtime.isGenerating)
             if isReadingManifest {
                 ProgressView("Reading manifest…")
             }
@@ -151,7 +171,7 @@ struct ModelSettingsView: View {
                 importKind = .weights
                 showingImporter = true
             }
-            .disabled(reviewedManifest == nil || !hasReviewedMetadata || runtime.isBusy || runtime.isResponding || isReadingManifest)
+            .disabled(reviewedManifest == nil || !hasReviewedMetadata || runtime.isBusy || runtime.isGenerating || isReadingManifest)
             if runtime.isImporting {
                 ProgressView("Copying and verifying model…")
             }
@@ -163,38 +183,111 @@ struct ModelSettingsView: View {
         .disabled(runtime.isImporting)
     }
 
+    private var modelCatalogSection: some View {
+        Section {
+            if runtime.installedModels.isEmpty {
+                Text("No models in the private catalog. Import a reviewed GGUF and its exact metadata below.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(runtime.installedModels, id: \.self) { manifest in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(manifest.displayName)
+                        Spacer()
+                        Text(manifest.quantization.rawValue)
+                            .font(.caption.monospaced())
+                    }
+                    Text(manifest.provenance.revision)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button(isSelected(manifest) ? "Verify selected model again" : "Verify and select \(manifest.quantization.rawValue)") {
+                        runtime.selectInstalledModel(manifest)
+                    }
+                    .disabled(runtime.isBusy || runtime.isGenerating)
+                }
+            }
+            if runtime.isVerifying {
+                ProgressView("Checking the stored file and SHA-256…")
+            }
+            Button("Refresh installed models", systemImage: "arrow.clockwise") {
+                Task { await runtime.refreshInstalledModels() }
+            }
+            .disabled(runtime.isBusy)
+        } header: {
+            Text("Private model catalog")
+        } footer: {
+            Text("Reviewed manifests and your selected import survive app restarts. Selection and native loading recheck the file and checksum. Selecting Q4_K_M is explicit and unloads the current native model first; no model loads automatically.")
+        }
+    }
+
+    private func isSelected(_ manifest: ModelManifest) -> Bool {
+        runtime.importedModel?.manifest.id == manifest.id
+            && runtime.importedModel?.manifest.quantization == manifest.quantization
+    }
+
     @ViewBuilder
     private var importedModelSection: some View {
         if let model = runtime.importedModel {
-            Section("Verified import") {
+            Section("Selected verified import") {
                 LabeledContent("Model", value: model.manifest.displayName)
                 LabeledContent("Quantization", value: model.manifest.quantization.rawValue)
                 LabeledContent("File size", value: ByteCountFormatter.string(fromByteCount: model.manifest.expectedByteCount, countStyle: .file))
-                Button("Load imported model") {
+                Button("Verify and load selected model") {
                     Task { await runtime.loadImportedModel() }
                 }
-                .disabled(runtime.selection != .native || runtime.isBusy || runtime.isResponding || runtime.isReady)
-                if runtime.isLoading { ProgressView("Loading…") }
-                Text("Select Native adapter to attempt loading. This milestone's unlinked adapter reports a clear error.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Text("Import selection is kept for this session. Select the file and reviewed metadata again after restarting.")
+                .disabled(!runtime.canLoadNativeModel)
+                if runtime.isLoading { ProgressView("Loading native model…") }
+                if let loadTime = runtime.lastLoadDurationSeconds {
+                    LabeledContent("Latest native load", value: String(format: "%.2f s", loadTime))
+                }
+                Text("Choose Native adapter, then load explicitly. Loading hashes the selected file again before native allocation; load time excludes that checksum pass.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         }
     }
 
+    private var resourceSection: some View {
+        Section {
+            if let resources = runtime.resources {
+                LabeledContent("Available app memory", value: memoryDescription(resources.availableMemoryBytes))
+                LabeledContent("Resident memory", value: memoryDescription(resources.residentMemoryBytes))
+                LabeledContent("Peak resident since launch", value: memoryDescription(resources.peakResidentMemoryBytes))
+                LabeledContent("Thermal state", value: resources.thermalState.rawValue.capitalized)
+            }
+            Button("Refresh memory and thermal readings", systemImage: "arrow.clockwise") {
+                runtime.refreshResources()
+            }
+            Text("Readings describe this process at refresh time. Available memory changes as iOS balances other work; the resident peak includes all app allocations since launch. Missing measurements are shown as unavailable. iOS can terminate an app before it can handle an out-of-memory condition.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } header: {
+            Text("Device resources")
+        }
+    }
+
+    private func memoryDescription(_ value: UInt64?) -> String {
+        guard let value else { return "Unavailable" }
+        return ByteCountFormatter.string(fromByteCount: Int64(clamping: value), countStyle: .memory)
+    }
+
     @ViewBuilder
     private var measurementSection: some View {
         if let metrics = runtime.snapshot?.metrics {
+            let demonstration = runtime.snapshot?.mode == .demonstration
             Section("Latest generation") {
-                LabeledContent(runtime.snapshot?.mode == .demonstration ? "Output events" : "Output tokens", value: String(metrics.generatedTokenCount))
-                LabeledContent("Duration", value: String(format: "%.2f s", metrics.durationSeconds))
+                LabeledContent(demonstration ? "Output chunks" : "Output tokens", value: String(metrics.generatedTokenCount))
+                LabeledContent("Request duration", value: String(format: "%.2f s", metrics.durationSeconds))
                 if let firstToken = metrics.timeToFirstTokenSeconds {
-                    LabeledContent("Time to first token", value: String(format: "%.2f s", firstToken))
+                    LabeledContent(demonstration ? "Time to first chunk" : "Time to first token", value: String(format: "%.2f s", firstToken))
                 }
-                Text("Demonstration event counts are text chunks, not tokenizer counts, and timings do not measure model performance. Peak memory, thermal state and model throughput need a physical iPhone benchmark.")
+                if !demonstration, let throughput = metrics.tokensPerSecond {
+                    LabeledContent("Generation throughput", value: String(format: "%.2f tokens/s", throughput))
+                }
+                Text(demonstration
+                     ? "Demonstration counts are text chunks and these timings do not measure model performance."
+                     : "Timings and token counts come from this generation. Complete the documented physical iPhone benchmark with memory and thermal readings before making device performance claims.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -203,56 +296,81 @@ struct ModelSettingsView: View {
 
     private var privacySection: some View {
         Section("Privacy and lifecycle") {
-            Text("Messages stay in memory for this session. No account, model upload or network scan is used by this scaffold.")
-            Text("Backgrounding cancels generation and unloads the runtime. Start the demonstration or load a model explicitly after returning. iOS background execution is best-effort.")
+            Text("Messages stay in memory for this session. Reviewed model files and manifests remain in app-private storage. No account, model upload or network scan is used.")
+            Text("Backgrounding or an iOS memory warning cancels generation and model preparation, then unloads the runtime. Serious or critical thermal state also blocks native inference. Start the demonstration or load a selected model explicitly after recovery; iOS background execution is best-effort.")
             Text("Remediation actions and external integrations require explicit approval in future milestones.")
         }
         .font(.footnote)
     }
 
-    private func readManifest(from url: URL) async {
+    private func beginReadingManifest(from url: URL) {
+        manifestReadTask?.cancel()
+        let operationID = UUID()
+        manifestReadID = operationID
         isReadingManifest = true
         manifestNotice = nil
-        defer { isReadingManifest = false }
-        do {
-            let manifest = try await Task.detached(priority: .userInitiated) {
-                let scopedAccess = url.startAccessingSecurityScopedResource()
-                defer {
-                    if scopedAccess { url.stopAccessingSecurityScopedResource() }
-                }
-                guard url.isFileURL else {
-                    throw ManifestInputError("Choose a local JSON manifest.")
-                }
-                let descriptor = url.path.withCString {
-                    open($0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
-                }
-                guard descriptor >= 0 else {
-                    throw ManifestInputError("The selected manifest cannot be opened.")
-                }
-                let input = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
-                defer { try? input.close() }
-                var status = stat()
-                guard fstat(descriptor, &status) == 0,
-                      (status.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG),
-                      status.st_size > 0, status.st_size <= 65_536 else {
-                    throw ManifestInputError("Choose a regular JSON manifest no larger than 64 KB.")
-                }
-                var data = Data()
-                while data.count <= 65_536 {
-                    guard let chunk = try input.read(upToCount: 65_537 - data.count),
-                          !chunk.isEmpty else { break }
-                    data.append(chunk)
-                }
-                guard data.count <= 65_536 else {
-                    throw ManifestInputError("The manifest exceeds the 64 KB limit.")
-                }
-                return try JSONDecoder().decode(ModelManifest.self, from: data)
-            }.value
+        manifestReadTask = Task {
+            await readManifest(from: url, operationID: operationID)
+        }
+    }
+
+    private func readManifest(from url: URL, operationID: UUID) async {
+        defer {
+            if manifestReadID == operationID {
+                isReadingManifest = false
+                manifestReadTask = nil
+                manifestReadID = nil
+            }
+        }
+        let readTask = Task.detached(priority: .userInitiated) {
             try Task.checkCancellation()
+            let scopedAccess = url.startAccessingSecurityScopedResource()
+            defer {
+                if scopedAccess { url.stopAccessingSecurityScopedResource() }
+            }
+            guard url.isFileURL else {
+                throw ManifestInputError("Choose a local JSON manifest.")
+            }
+            let descriptor = url.path.withCString {
+                open($0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+            }
+            guard descriptor >= 0 else {
+                throw ManifestInputError("The selected manifest cannot be opened.")
+            }
+            let input = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+            defer { try? input.close() }
+            var status = stat()
+            guard fstat(descriptor, &status) == 0,
+                  (status.st_mode & mode_t(S_IFMT)) == mode_t(S_IFREG),
+                  status.st_size > 0, status.st_size <= 65_536 else {
+                throw ManifestInputError("Choose a regular JSON manifest no larger than 64 KB.")
+            }
+            var data = Data()
+            while data.count <= 65_536 {
+                try Task.checkCancellation()
+                guard let chunk = try input.read(upToCount: 65_537 - data.count),
+                      !chunk.isEmpty else { break }
+                data.append(chunk)
+            }
+            guard data.count <= 65_536 else {
+                throw ManifestInputError("The manifest exceeds the 64 KB limit.")
+            }
+            try Task.checkCancellation()
+            return try JSONDecoder().decode(ModelManifest.self, from: data)
+        }
+        do {
+            let manifest = try await withTaskCancellationHandler {
+                try await readTask.value
+            } onCancel: {
+                readTask.cancel()
+            }
+            try Task.checkCancellation()
+            guard manifestReadID == operationID else { return }
             metadata = ModelMetadataForm(manifest: manifest)
             hasReviewedMetadata = false
             manifestNotice = "Manifest loaded. Review every value, then acknowledge the source and checksum before selecting a GGUF."
         } catch {
+            guard manifestReadID == operationID, !Task.isCancelled, !(error is CancellationError) else { return }
             runtime.errorMessage = error.localizedDescription
         }
     }

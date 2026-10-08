@@ -70,11 +70,20 @@ public struct InferenceMetrics: Sendable, Equatable {
     public let generatedTokenCount: Int
     public let timeToFirstTokenSeconds: Double?
     public let durationSeconds: Double
+    /// Native sampling/decode duration after prompt evaluation; nil for demonstration engines.
+    public let generationDurationSeconds: Double?
 
-    public init(generatedTokenCount: Int, timeToFirstTokenSeconds: Double?, durationSeconds: Double) {
+    public var tokensPerSecond: Double? {
+        guard generatedTokenCount > 0, let generationDurationSeconds,
+              generationDurationSeconds.isFinite, generationDurationSeconds > 0 else { return nil }
+        return Double(generatedTokenCount) / generationDurationSeconds
+    }
+
+    public init(generatedTokenCount: Int, timeToFirstTokenSeconds: Double?, durationSeconds: Double, generationDurationSeconds: Double? = nil) {
         self.generatedTokenCount = generatedTokenCount
         self.timeToFirstTokenSeconds = timeToFirstTokenSeconds
         self.durationSeconds = durationSeconds
+        self.generationDurationSeconds = generationDurationSeconds
     }
 }
 
@@ -87,11 +96,20 @@ public enum InferenceEvent: Sendable, Equatable {
 /// A native backend must enforce the configured context using its actual tokenizer and release partial
 /// allocations when loading fails. Unload must be idempotent. The coordinator serializes unload after
 /// in-flight engine work settles. Close streams only after generation resources are safe to reuse.
+/// `cancelGeneration` must join the active generation, including native/GPU work, before returning.
+/// Cancelling an AsyncThrowingStream consumer alone does not establish that its producer has stopped.
 public protocol InferenceEngine: Sendable {
     var mode: InferenceMode { get }
     func load(model: ValidatedModel, configuration: InferenceConfiguration) async throws
     func unload() async
     func generate(request: InferenceRequest) async throws -> AsyncThrowingStream<InferenceEvent, Error>
+    func cancelGeneration() async
+}
+
+public extension InferenceEngine {
+    /// Suitable only for resource-less demonstration and test streams. Engines owning
+    /// asynchronous workers or native resources must override this cancellation barrier.
+    func cancelGeneration() async {}
 }
 
 public enum RuntimeError: Error, Sendable, Equatable, LocalizedError {
@@ -102,6 +120,8 @@ public enum RuntimeError: Error, Sendable, Equatable, LocalizedError {
     case backgrounded
     case resourceLimit(reason: String)
     case engineFailure(operation: String)
+    /// Sanitized diagnostics from a typed native backend error, never generated text.
+    case backendFailure(reason: String)
     case modelValidationFailed
     case demonstrationUnavailable
 
@@ -117,6 +137,8 @@ public enum RuntimeError: Error, Sendable, Equatable, LocalizedError {
             return "Activate the app before starting inference."
         case .engineFailure(let operation):
             return "The inference engine failed during \(operation)."
+        case .backendFailure(let reason):
+            return reason
         case .modelValidationFailed:
             return "The model could not be verified. Check its manifest and file before importing it again."
         case .demonstrationUnavailable:

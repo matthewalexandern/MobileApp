@@ -30,4 +30,5 @@ xcuserdata/
 *.ipa
 *.dSYM/
 ThirdParty/checkouts/
+Packages/NativeRuntime/Artifacts/
 .cache/

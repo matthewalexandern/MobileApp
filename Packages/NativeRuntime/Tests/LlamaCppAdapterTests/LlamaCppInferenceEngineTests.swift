@@ -4,8 +4,8 @@ import RuntimeCore
 @testable import LlamaCppAdapter
 
 struct LlamaCppInferenceEngineTests {
-    @Test func nativeDefaultFailsClosedAndNeverBecomesReady() async {
-        let engine = LlamaCppInferenceEngine()
+    @Test func unavailableBackendFailsClosedAndNeverBecomesReady() async {
+        let engine = LlamaCppInferenceEngine(backend: UnavailableLlamaCppBackend())
         #expect(engine.mode == .local)
         for quantization in ModelQuantization.allCases {
             do {
@@ -22,6 +22,15 @@ struct LlamaCppInferenceEngineTests {
             }
         }
         await engine.unload()
+    }
+
+    @Test func defaultFactoryMatchesExplicitNativeBuildChoice() {
+        #if canImport(llama)
+        #expect(LlamaCppInferenceEngine.isNativeBackendLinked)
+        #else
+        #expect(!LlamaCppInferenceEngine.isNativeBackendLinked)
+        #endif
+        #expect(LlamaCppInferenceEngine.nativeIntegrationStatus.contains("llama.cpp"))
     }
 
     @Test func forwardsModelConfigurationAccelerationRequestAndMeasuredEvents() async throws {
