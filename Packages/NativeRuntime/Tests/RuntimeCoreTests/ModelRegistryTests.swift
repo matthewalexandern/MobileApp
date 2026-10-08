@@ -346,36 +346,55 @@ struct ModelRegistryTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let source = try writeSource(in: folder)
         let models = folder.appendingPathComponent("Models")
-        let registry = ModelRegistry(modelsDirectory: models)
-        let original = try await registry.importModel(from: source, manifest: manifest())
+        let initial = ModelRegistry(modelsDirectory: models)
+        let original = try await initial.importModel(from: source, manifest: manifest())
         let metadata = try Data(contentsOf: models.appendingPathComponent("catalog.json"))
         let artifacts = models.appendingPathComponent(".artifacts")
-        let largeSource = folder.appendingPathComponent("large.gguf")
-        let bytes = fixture() + Data(repeating: 0, count: 32 * 1_048_576)
-        try bytes.write(to: largeSource)
-        let largeManifest = manifest(size: Int64(bytes.count), hash: "d1392c063f1879fe53c4d041fc05063b8d159151581300d9dbb7071f68b13305")
-        let importing = Task { try await registry.importModel(from: largeSource, manifest: largeManifest) }
-        let sawStaging = await waitForStaging(in: artifacts)
-        #expect(sawStaging)
+        let checkpoint = RegistryCopyCheckpoint()
+        let registry = ModelRegistry(modelsDirectory: models, importerFactory: { directory in
+            ModelImporter(modelsDirectory: directory, copyCheckpoint: { await checkpoint.pause() })
+        })
+        let importing = Task {
+            do {
+                let model = try await registry.importModel(from: source, manifest: manifest())
+                await checkpoint.finished()
+                return model
+            } catch {
+                await checkpoint.finished()
+                throw error
+            }
+        }
+        do {
+            let paused = await checkpoint.waitUntilPaused()
+            try #require(paused, "The import must pause after successfully writing a staging chunk")
+            #expect(try Data(contentsOf: stagingFile(in: artifacts)) == fixture())
+            let concurrent = ModelRegistry(modelsDirectory: models)
+            do {
+                _ = try await concurrent.installedModels()
+                Issue.record("Other registry instances cannot race an import")
+            } catch let error as ModelRegistryError { #expect(error == .operationInProgress) }
+            do {
+                _ = try await registry.installedModels()
+                Issue.record("Actor reentrancy cannot race the owned catalog")
+            } catch let error as ModelRegistryError { #expect(error == .operationInProgress) }
+            importing.cancel()
+            await checkpoint.release()
+            do {
+                _ = try await importing.value
+                Issue.record("Import must honor cancellation")
+            } catch is CancellationError {}
 
-        let concurrent = ModelRegistry(modelsDirectory: models)
-        do {
-            _ = try await concurrent.installedModels()
-            Issue.record("Other registry instances cannot race an import")
-        } catch let error as ModelRegistryError { #expect(error == .operationInProgress) }
-        do {
-            _ = try await registry.installedModels()
-            Issue.record("Actor reentrancy cannot race the owned catalog")
-        } catch let error as ModelRegistryError { #expect(error == .operationInProgress) }
-        importing.cancel()
-        do {
-            _ = try await importing.value
-            Issue.record("Import must honor cancellation")
-        } catch is CancellationError {}
-
-        #expect(try Data(contentsOf: models.appendingPathComponent("catalog.json")) == metadata)
-        #expect(try await concurrent.restoreSelectedModel() == original)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: artifacts.path) == [original.fileURL.deletingLastPathComponent().lastPathComponent])
+            #expect(try Data(contentsOf: models.appendingPathComponent("catalog.json")) == metadata)
+            #expect(try await concurrent.restoreSelectedModel() == original)
+            #expect(try FileManager.default.contentsOfDirectory(atPath: artifacts.path) == [original.fileURL.deletingLastPathComponent().lastPathComponent])
+        } catch {
+            // Always settle the owned task before fixture teardown, including when
+            // a filesystem assertion/setup operation throws while import is paused.
+            importing.cancel()
+            await checkpoint.release()
+            _ = try? await importing.value
+            throw error
+        }
     }
 
     @Test func testMetadataCommitFailureCannotReplacePreviousModelOrManifest() async throws {
@@ -383,49 +402,60 @@ struct ModelRegistryTests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let source = try writeSource(in: folder)
         let models = folder.appendingPathComponent("Models")
-        let registry = ModelRegistry(modelsDirectory: models)
-        let original = try await registry.importModel(from: source, manifest: manifest())
+        let initial = ModelRegistry(modelsDirectory: models)
+        let original = try await initial.importModel(from: source, manifest: manifest())
         let catalogURL = models.appendingPathComponent("catalog.json")
         let metadata = try Data(contentsOf: catalogURL)
         let savedCatalog = models.appendingPathComponent("saved-catalog.json")
         let artifacts = models.appendingPathComponent(".artifacts")
-        let largeSource = folder.appendingPathComponent("large.gguf")
-        // Keep the multi-chunk import in progress long enough for the filesystem
-        // failure injection on Apple platforms where CryptoKit hashes very quickly.
-        let bytes = fixture() + Data(repeating: 0, count: 32 * 1_048_576)
-        try bytes.write(to: largeSource)
-        let replacement = manifest(size: Int64(bytes.count), hash: "d1392c063f1879fe53c4d041fc05063b8d159151581300d9dbb7071f68b13305")
-        let importing = Task { try await registry.importModel(from: largeSource, manifest: replacement) }
-        let sawStaging = await waitForStaging(in: artifacts)
-        #expect(sawStaging)
-        // Force rename failure after the transaction read its catalog. The original
-        // metadata is retained separately to prove its matching generation survives.
-        try FileManager.default.moveItem(at: catalogURL, to: savedCatalog)
-        try FileManager.default.createDirectory(at: catalogURL, withIntermediateDirectories: false)
-
-        do {
-            _ = try await importing.value
-            Issue.record("A failed metadata commit must fail the import")
-        } catch let error as ModelRegistryError {
-            #expect(error == .fileOperationFailed("atomically install catalog"))
+        let checkpoint = RegistryCopyCheckpoint()
+        let registry = ModelRegistry(modelsDirectory: models, importerFactory: { directory in
+            ModelImporter(modelsDirectory: directory, copyCheckpoint: { await checkpoint.pause() })
+        })
+        let importing = Task {
+            do {
+                let model = try await registry.importModel(from: source, manifest: manifest())
+                await checkpoint.finished()
+                return model
+            } catch {
+                await checkpoint.finished()
+                throw error
+            }
         }
-        #expect(try Data(contentsOf: savedCatalog) == metadata)
-        #expect(try Data(contentsOf: original.fileURL) == fixture())
-        #expect(try FileManager.default.contentsOfDirectory(atPath: artifacts.path) == [original.fileURL.deletingLastPathComponent().lastPathComponent])
-        try FileManager.default.removeItem(at: catalogURL)
-        try FileManager.default.moveItem(at: savedCatalog, to: catalogURL)
-        #expect(try await registry.restoreSelectedModel() == original)
+        do {
+            let paused = await checkpoint.waitUntilPaused()
+            try #require(paused, "The import must pause after successfully writing a staging chunk")
+            #expect(try Data(contentsOf: stagingFile(in: artifacts)) == fixture())
+            // Force rename failure after the transaction read its catalog. The
+            // original metadata and its generation remain available for recovery.
+            try FileManager.default.moveItem(at: catalogURL, to: savedCatalog)
+            try FileManager.default.createDirectory(at: catalogURL, withIntermediateDirectories: false)
+            await checkpoint.release()
+
+            do {
+                _ = try await importing.value
+                Issue.record("A failed metadata commit must fail the import")
+            } catch let error as ModelRegistryError {
+                #expect(error == .fileOperationFailed("atomically install catalog"))
+            }
+            #expect(try Data(contentsOf: savedCatalog) == metadata)
+            #expect(try Data(contentsOf: original.fileURL) == fixture())
+            #expect(try FileManager.default.contentsOfDirectory(atPath: artifacts.path) == [original.fileURL.deletingLastPathComponent().lastPathComponent])
+            try FileManager.default.removeItem(at: catalogURL)
+            try FileManager.default.moveItem(at: savedCatalog, to: catalogURL)
+            #expect(try await registry.restoreSelectedModel() == original)
+        } catch {
+            importing.cancel()
+            await checkpoint.release()
+            _ = try? await importing.value
+            throw error
+        }
     }
 
-    private func waitForStaging(in artifacts: URL) async -> Bool {
-        for _ in 0..<10_000 {
-            if let enumerator = FileManager.default.enumerator(atPath: artifacts.path),
-               enumerator.allObjects.compactMap({ $0 as? String }).contains(where: { $0.hasSuffix(".importing") }) {
-                return true
-            }
-            await Task.yield()
-        }
-        return false
+    private func stagingFile(in artifacts: URL) throws -> URL {
+        let paths = FileManager.default.enumerator(atPath: artifacts.path)?.allObjects.compactMap { $0 as? String } ?? []
+        let staging = try #require(paths.first(where: { $0.hasSuffix(".importing") }))
+        return artifacts.appendingPathComponent(staging)
     }
 
     private func temporaryDirectory() throws -> URL {
@@ -470,5 +500,48 @@ struct ModelRegistryTests {
 
     private func appendLittleEndian(_ value: UInt64, to data: inout Data) {
         for shift in stride(from: 0, through: 56, by: 8) { data.append(UInt8(truncatingIfNeeded: value >> shift)) }
+    }
+}
+
+/// A checkpoint inside a real staging write, independent of file size, hashing
+/// speed, and executor scheduling. All test failure paths release the held import.
+private actor RegistryCopyCheckpoint {
+    private var reached = false
+    private var completed = false
+    private var released = false
+    private var arrivalWaiters: [CheckedContinuation<Bool, Never>] = []
+    private var releaseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func pause() async {
+        reached = true
+        let waiting = arrivalWaiters
+        arrivalWaiters.removeAll()
+        for continuation in waiting { continuation.resume(returning: true) }
+        if released { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilPaused() async -> Bool {
+        if reached { return true }
+        if completed { return false }
+        return await withCheckedContinuation { continuation in
+            arrivalWaiters.append(continuation)
+        }
+    }
+
+    func release() {
+        released = true
+        let waiting = releaseWaiters
+        releaseWaiters.removeAll()
+        for continuation in waiting { continuation.resume() }
+    }
+
+    func finished() {
+        completed = true
+        let waiting = arrivalWaiters
+        arrivalWaiters.removeAll()
+        for continuation in waiting { continuation.resume(returning: reached) }
     }
 }

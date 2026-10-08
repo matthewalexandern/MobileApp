@@ -63,11 +63,20 @@ public actor ModelRegistry {
     }
 
     private let modelsDirectory: URL
+    private let importerFactory: @Sendable (URL) -> ModelImporter
     private var operationInProgress = false
     private let maximumCatalogBytes = 1_048_576
 
     public init(modelsDirectory: URL) {
         self.modelsDirectory = modelsDirectory
+        self.importerFactory = { ModelImporter(modelsDirectory: $0) }
+    }
+
+    /// Internal seam for deterministic tests of ownership/cancellation after a real
+    /// staging write. Production and validation-only reads use the ordinary importer.
+    init(modelsDirectory: URL, importerFactory: @escaping @Sendable (URL) -> ModelImporter) {
+        self.modelsDirectory = modelsDirectory
+        self.importerFactory = importerFactory
     }
 
     /// Call from the app to obtain its sandbox's existing Application Support/Models
@@ -100,7 +109,7 @@ public actor ModelRegistry {
         defer {
             if !committed { removeOwnedGeneration(artifactIdentifier, manifest: manifest, in: directory.artifacts) }
         }
-        let importer = ModelImporter(modelsDirectory: generation)
+        let importer = importerFactory(generation)
         let model = try await importer.importModel(from: sourceURL, manifest: manifest)
         try Task.checkCancellation()
         catalog.entries.removeAll { $0.identity == Identity(manifest) }

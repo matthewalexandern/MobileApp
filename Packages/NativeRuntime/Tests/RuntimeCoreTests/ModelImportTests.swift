@@ -235,32 +235,35 @@ struct ModelImportTests {
         let folder = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: folder) }
         let source = folder.appendingPathComponent("source.gguf")
-        let bytes = fixture() + Data(repeating: 0, count: 32 * 1_048_576)
+        let bytes = fixture()
         try bytes.write(to: source)
         let models = folder.appendingPathComponent("Models")
         try FileManager.default.createDirectory(at: models, withIntermediateDirectories: true)
         let destination = models.appendingPathComponent("fixture-Q8_0.gguf")
         let previous = Data("previous model".utf8)
         try previous.write(to: destination)
-        let importer = ModelImporter(modelsDirectory: models)
-        let largeManifest = manifest(size: Int64(bytes.count), hash: "d1392c063f1879fe53c4d041fc05063b8d159151581300d9dbb7071f68b13305")
-        let operation = Task { try await importer.importModel(from: source, manifest: largeManifest) }
-
-        // Wait until the staging file exists so cancellation exercises cleanup during copy.
-        var sawStaging = false
-        for _ in 0..<10_000 {
-            if try FileManager.default.contentsOfDirectory(atPath: models.path).contains(where: { $0.hasSuffix(".importing") }) {
-                sawStaging = true
-                break
+        let importer = ModelImporter(modelsDirectory: models, copyCheckpoint: {
+            let staging = try FileManager.default.contentsOfDirectory(at: models, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "importing" }
+            #expect(staging.count == 1, "Cancellation must happen after staging begins")
+            if let stagingFile = staging.first {
+                #expect(try Data(contentsOf: stagingFile) == bytes, "The checkpoint must follow a successful staging write")
             }
-            await Task.yield()
-        }
-        operation.cancel()
+            #expect(try Data(contentsOf: destination) == previous)
+            withUnsafeCurrentTask { task in
+                #expect(task != nil)
+                task?.cancel()
+            }
+        })
+        let reviewedManifest = manifest()
+        let operation = Task { try await importer.importModel(from: source, manifest: reviewedManifest) }
         do {
             _ = try await operation.value
             Issue.record("The in-progress import must honor cancellation")
-        } catch is CancellationError {}
-        #expect(sawStaging, "Cancellation must happen after staging begins")
+        } catch is CancellationError {
+            // Cancellation is delivered by the importer task's own checkpoint,
+            // independent of fixture size, task scheduling, or filesystem polling.
+        }
         #expect(try Data(contentsOf: destination) == previous)
         #expect(try FileManager.default.contentsOfDirectory(atPath: models.path) == ["fixture-Q8_0.gguf"])
     }

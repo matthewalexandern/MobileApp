@@ -96,9 +96,18 @@ public actor ModelImporter {
     private let modelsDirectory: URL
     private var activeDestinations: Set<String> = []
     private let chunkByteCount = 1_048_576
+    private let copyCheckpoint: (@Sendable () async throws -> Void)?
 
     public init(modelsDirectory: URL) {
         self.modelsDirectory = modelsDirectory
+        copyCheckpoint = nil
+    }
+
+    /// Internal deterministic checkpoint for import lifecycle tests. Production
+    /// imports use the public initializer and install no callback.
+    init(modelsDirectory: URL, copyCheckpoint: @escaping @Sendable () async throws -> Void) {
+        self.modelsDirectory = modelsDirectory
+        self.copyCheckpoint = copyCheckpoint
     }
 
     public func importModel(from sourceURL: URL, manifest: ModelManifest) async throws -> ValidatedModel {
@@ -251,6 +260,10 @@ public actor ModelImporter {
             if let output {
                 do { try output.write(contentsOf: chunk) }
                 catch { throw ModelImportError.fileOperationFailed("write staging model") }
+                if count == Int64(chunk.count), let copyCheckpoint {
+                    try await copyCheckpoint()
+                    try Task.checkCancellation()
+                }
             }
             await Task.yield()
         }
