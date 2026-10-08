@@ -1,0 +1,10 @@
+{
+  "upstreamURL": "https://github.com/ggml-org/llama.cpp.git",
+  "tag": "b7110",
+  "commit": "3ae282a06f74f8a24fa1ac3b1ab6dc8dda4ea22c",
+  "license": "MIT",
+  "buildScript": "build-xcframework.sh",
+  "buildScriptSHA256": "14f4dd0a5af3aa63fd7f47e26b3d6abe5035ac1523a1dee8a4724b66f8b69238",
+  "artifactRelativePath": "build-apple/llama.xcframework",
+  "nativeAdapterLinked": false
+}
