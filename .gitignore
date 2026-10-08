@@ -1,0 +1,33 @@
+# Never commit local model weights, credentials, or user data.
+*.gguf
+*.gguf.*
+*.safetensors
+*.bin
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
+*.key
+secrets/
+Models/
+UserData/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Apple and Swift build products.
+.DS_Store
+DerivedData/
+.build/
+.swiftpm/
+build/
+build-apple/
+*.xcframework/
+*.xcresult/
+*.xcarchive/
+xcuserdata/
+*.ipa
+*.dSYM/
+ThirdParty/checkouts/
+.cache/

@@ -1,0 +1,267 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000001 /* NativeRuntimeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* NativeRuntimeApp.swift */; };
+		A00000000000000000000002 /* RuntimeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* RuntimeViewModel.swift */; };
+		A00000000000000000000003 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000003 /* ContentView.swift */; };
+		A00000000000000000000004 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000004 /* ChatView.swift */; };
+		A00000000000000000000005 /* ModelSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000005 /* ModelSettingsView.swift */; };
+		A00000000000000000000006 /* RoadmapViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000006 /* RoadmapViews.swift */; };
+		A00000000000000000000007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007 /* Assets.xcassets */; };
+		A00000000000000000000011 /* RuntimeCore in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000011 /* RuntimeCore */; };
+		A00000000000000000000012 /* LlamaCppAdapter in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000012 /* LlamaCppAdapter */; };
+		A00000000000000000000013 /* RuntimeStorage in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000013 /* RuntimeStorage */; };
+		A00000000000000000000014 /* RuntimeIntelligence in Frameworks */ = {isa = PBXBuildFile; productRef = F00000000000000000000014 /* RuntimeIntelligence */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		B00000000000000000000001 /* NativeRuntimeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRuntimeApp.swift; sourceTree = "<group>"; };
+		B00000000000000000000002 /* RuntimeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeViewModel.swift; sourceTree = "<group>"; };
+		B00000000000000000000003 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B00000000000000000000004 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
+		B00000000000000000000005 /* ModelSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelSettingsView.swift; sourceTree = "<group>"; };
+		B00000000000000000000006 /* RoadmapViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadmapViews.swift; sourceTree = "<group>"; };
+		B00000000000000000000007 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B00000000000000000000020 /* NativeRuntimeApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NativeRuntimeApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C00000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000011 /* RuntimeCore in Frameworks */,
+				A00000000000000000000012 /* LlamaCppAdapter in Frameworks */,
+				A00000000000000000000013 /* RuntimeStorage in Frameworks */,
+				A00000000000000000000014 /* RuntimeIntelligence in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		D00000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				D00000000000000000000002 /* NativeRuntimeApp */,
+				D00000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D00000000000000000000002 /* NativeRuntimeApp */ = {
+			isa = PBXGroup;
+			children = (
+				B00000000000000000000001 /* NativeRuntimeApp.swift */,
+				B00000000000000000000002 /* RuntimeViewModel.swift */,
+				B00000000000000000000003 /* ContentView.swift */,
+				B00000000000000000000004 /* ChatView.swift */,
+				B00000000000000000000005 /* ModelSettingsView.swift */,
+				B00000000000000000000006 /* RoadmapViews.swift */,
+				B00000000000000000000007 /* Assets.xcassets */,
+			);
+			name = NativeRuntimeApp;
+			path = Apps/NativeRuntimeApp;
+			sourceTree = "<group>";
+		};
+		D00000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (B00000000000000000000020 /* NativeRuntimeApp.app */,);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E00000000000000000000002 /* NativeRuntimeApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E00000000000000000000012 /* Build configuration list for PBXNativeTarget "NativeRuntimeApp" */;
+			buildPhases = (
+				C00000000000000000000001 /* Sources */,
+				C00000000000000000000002 /* Frameworks */,
+				C00000000000000000000003 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = NativeRuntimeApp;
+			packageProductDependencies = (
+				F00000000000000000000011 /* RuntimeCore */,
+				F00000000000000000000012 /* LlamaCppAdapter */,
+				F00000000000000000000013 /* RuntimeStorage */,
+				F00000000000000000000014 /* RuntimeIntelligence */,
+			);
+			productName = NativeRuntimeApp;
+			productReference = B00000000000000000000020 /* NativeRuntimeApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					E00000000000000000000002 = {
+						CreatedOnToolsVersion = 16.0;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = E00000000000000000000011 /* Build configuration list for PBXProject "NativeRuntime" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base,);
+			mainGroup = D00000000000000000000001;
+			packageReferences = (F00000000000000000000001 /* XCLocalSwiftPackageReference "Packages/NativeRuntime" */,);
+			productRefGroup = D00000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (E00000000000000000000002 /* NativeRuntimeApp */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C00000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A00000000000000000000007 /* Assets.xcassets in Resources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		C00000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000001 /* NativeRuntimeApp.swift in Sources */,
+				A00000000000000000000002 /* RuntimeViewModel.swift in Sources */,
+				A00000000000000000000003 /* ContentView.swift in Sources */,
+				A00000000000000000000004 /* ChatView.swift in Sources */,
+				A00000000000000000000005 /* ModelSettingsView.swift in Sources */,
+				A00000000000000000000006 /* RoadmapViews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		E00000000000000000000021 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		E00000000000000000000022 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		E00000000000000000000023 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Local Security";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.local.NativeRuntime;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		E00000000000000000000024 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Local Security";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.local.NativeRuntime;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E00000000000000000000011 /* Build configuration list for PBXProject "NativeRuntime" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (E00000000000000000000021 /* Debug */, E00000000000000000000022 /* Release */,);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E00000000000000000000012 /* Build configuration list for PBXNativeTarget "NativeRuntimeApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (E00000000000000000000023 /* Debug */, E00000000000000000000024 /* Release */,);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		F00000000000000000000001 /* XCLocalSwiftPackageReference "Packages/NativeRuntime" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/NativeRuntime;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F00000000000000000000011 /* RuntimeCore */ = {isa = XCSwiftPackageProductDependency; package = F00000000000000000000001 /* XCLocalSwiftPackageReference "Packages/NativeRuntime" */; productName = RuntimeCore; };
+		F00000000000000000000012 /* LlamaCppAdapter */ = {isa = XCSwiftPackageProductDependency; package = F00000000000000000000001 /* XCLocalSwiftPackageReference "Packages/NativeRuntime" */; productName = LlamaCppAdapter; };
+		F00000000000000000000013 /* RuntimeStorage */ = {isa = XCSwiftPackageProductDependency; package = F00000000000000000000001 /* XCLocalSwiftPackageReference "Packages/NativeRuntime" */; productName = RuntimeStorage; };
+		F00000000000000000000014 /* RuntimeIntelligence */ = {isa = XCSwiftPackageProductDependency; package = F00000000000000000000001 /* XCLocalSwiftPackageReference "Packages/NativeRuntime" */; productName = RuntimeIntelligence; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = E00000000000000000000001 /* Project object */;
+}
