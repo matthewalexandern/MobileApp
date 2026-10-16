@@ -1,0 +1,9 @@
+{
+  "schema": "llama-cpp-source-v1",
+  "repository_url": "https://github.com/ggml-org/llama.cpp",
+  "release_tag": "v0.7.0",
+  "commit": "620d2225cc436ab0b001e3200e590e3b286ef9ab",
+  "source_mode": "git-tree",
+  "git_tree_sha": "6868e0a538a05e9a253a0b86ccb71b4e06a64684",
+  "source_tree_url": "https://api.github.com/repos/ggml-org/llama.cpp/git/trees/6868e0a538a05e9a253a0b86ccb71b4e06a64684"
+}
