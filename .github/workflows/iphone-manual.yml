@@ -1,0 +1,43 @@
+name: iPhone simulator verification (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  simulator:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify generated project
+        run: python3 apps/iphone/scripts/generate_project.py --check
+      - name: Build pinned device and simulator engine
+        run: python3 apps/iphone/scripts/build_llama.py --jobs 2
+      - name: Select available iPhone simulator
+        run: |
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/simulators.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          devices = json.loads((Path(os.environ['RUNNER_TEMP']) / 'simulators.json').read_text())['devices']
+          phones = [d for runtime, group in devices.items() if 'iOS' in runtime for d in group if d.get('isAvailable') and d['name'].startswith('iPhone')]
+          if not phones:
+              raise SystemExit('No available iPhone simulator. Install an iOS 17 or newer runtime.')
+          phones.sort(key=lambda d: (d.get('state') != 'Booted', d['name']))
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write('KERNAL_SIMULATOR_ID=' + phones[0]['udid'] + '\n')
+          PY
+      - name: Build and run XCTest
+        run: |
+          xcodebuild test \
+            -project apps/iphone/KernalMobile.xcodeproj \
+            -scheme KernalMobile \
+            -destination "platform=iOS Simulator,id=$KERNAL_SIMULATOR_ID" \
+            -derivedDataPath "$RUNNER_TEMP/KernalMobileDerivedData" \
+            -resultBundlePath "$RUNNER_TEMP/KernalMobileTests.xcresult" \
+            CODE_SIGNING_ALLOWED=NO
